@@ -1,0 +1,611 @@
+\documentclass[12pt,titlepage]{article}
+\usepackage{CJK}                %中日韩文字宏包套件
+\usepackage{indentfirst}        %章节的第一个段落缩排
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%数学符号
+\usepackage{amssymb}            %定义AMS的数学符号命令
+\usepackage{amsmath}            %排版数学公式
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%显示各种图形符号: TeXFriend
+\usepackage{pifont}
+\usepackage{bbding}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{latexsym}           %LaTeX附带特殊符号
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%列表环境 -- 配合命令:compactitem,asparaitem,inparaitem
+\usepackage{paralist}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%处理超过一页长度的表格
+\usepackage{supertabular}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{color}              %给图形表格文字设置颜色
+\usepackage{multirow}           %排表格里的跨行文本数据
+\usepackage{colortbl}           %彩色表格宏包
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%源代码
+\usepackage{listings}
+\lstloadlanguages{c++}
+\lstset{numbers=left} \lstset{language=C++} \lstset{breaklines}
+\lstset{extendedchars=false} \lstset{backgroundcolor=\color{lightgray}}
+\lstset{keywordstyle=\color{blue}\bfseries} \lstset{frame=none}
+\lstset{tabsize=4} \lstset{commentstyle=\color{red}}
+\lstset{stringstyle=\emph}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%绘制树图所需宏包。%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{pstricks}
+\usepackage{pst-node}
+\usepackage{pst-blur}
+\usepackage{pstricks-add}
+\usepackage{pst-tree}
+
+\newcommand{\Itemf}[1]{\Tr[ref=l]{%
+\psframebox[linestyle=solid,fillcolor=cyan!50,fillstyle=solid]{#1}}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%画中文下划线，可自动换行的宏包
+\usepackage{CJKfntef}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{ulem}               %产生下划线，只能单行下划线，针对英文，不能换行
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%去掉容差报警的方法
+\hbadness=10000
+\tolerance=10000
+\hfuzz=150pt
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%更改子级item，enumerate的图标的方法
+\renewcommand{\labelenumii}{(\arabic{enumii}).}
+\renewcommand{\labelenumiii}{[\arabic{enumiii}]}
+\renewcommand{\labelenumiv}{<\arabic{enumiv}>}
+
+\renewcommand{\labelitemi}{\PlusCenterOpen }
+\renewcommand{\labelitemii}{\Checkmark }
+\renewcommand{\labelitemiii}{\ding {43} }
+\renewcommand{\labelitemiv}{$\clubsuit$}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\usepackage{graphicx}           %graphics 宏包的扩展
+\usepackage{textcomp}           %货币温度版权等符号
+\usepackage{soul}               %使用连字符号连接
+
+
+
+
+\pagenumbering{arabic}      %determines page number style; style may be
+                            %arabic (3), roman(iii), Roman (III), alph (c), Alph (C).
+
+
+
+\renewcommand{\figurename}{{fig}}
+
+\begin{document}
+\begin{CJK*}{GBK}{kai}
+
+\begin{center}
+\large \bfseries
+iMX51 GPIO前后端驱动架构 \newline
+\end{center}
+
+\rightline{余旭,邓飞}
+\rightline{预研及软件工程中心}
+\rightline{\today}
+
+\begin{itemize}
+
+\item
+\textcolor[rgb]{1, 0, 0}{任务目标：}
+\begin{dinglist}{110}
+\item
+在jzj项目gpio驱动的基础上，分析整理GPIO前后端驱动架构
+\end{dinglist}
+
+\item
+\textcolor[rgb]{0,0,1}{GPIO前端驱动架构:}
+\begin{enumerate}
+\item
+jzj项目gpio驱动中指纹模块电源控制的部分代码如下：
+\lstset{
+formfeed=\newpage,
+basicstyle=\small, % print whole listing small
+keywordstyle=\color{red}\bfseries,
+identifierstyle={}, % nothing happens to other identifiers
+commentstyle=\color{white}, % white comments
+stringstyle=\ttfamily, % typewriter type for strings
+}
+
+\begin{lstlisting}{}
+
+#define FINGER_PWR (2*32 + 20) /*GPIO_3_20*/
+
+static long fingerprint_gpio_setup(int value)
+{
+	long ret = 0;
+	switch (value) {
+	case CMD_FIG_POWERON:
+		 ret = gpio_request(FINGER_PWR, "on");
+		 if (ret)
+			goto error;
+			
+		 gpio_direction_output(FINGER_PWR, 0);
+		 gpio_set_value(FINGER_PWR, 0);
+		 gpio_free(FINGER_PWR);
+		 break;
+	......
+}
+\end{lstlisting}
+
+\item
+从上面代码可以知道设置GPIO的基本流程是：先request，判断该gpio是否已使用；
+然后设置该gpio是作为输入还是输出；再设置gpio的值，设置完gpio之后，要释放。
+若没有释放，下次再设置该gpio，在request的时候就会因为该gpio已使用，而报错。
+
+\item
+上面引出一个疑问：{ \textcolor[rgb]{0,0,1}{设置指纹模块为power on是通过宏FINGER\_PWR来实现的。
+而\CJKunderwave{宏FINGER\_PWR是一个整数值，又不是gpio的地址， 为什么能成功设置相应的gpio呢？}\textcolor[rgb]{1,0,0}{后续分析会回答这个问题。}}}
+
+\end{enumerate}
+
+\item
+\textcolor[rgb]{0,0,1}{GPIO后端驱动架构：}
+
+
+\begin{psmatrix}[mnode=r,colsep=0.8,rowsep=0.4]
+\rput[tl](-2,0){\colorbox{lightgray}{\blue 初始化流程:}}
+\rput[tl](-2,-1){void \_init start\_kernel(void)}
+\rput[tl](-2,-1.5){\{}
+    \rput[tl](-1.5,-1.7){. . .}
+    \rput[tl](-1.5,-2){setup\_arch(\&command\_line);}
+    \rput[tl](-1.5,-2.7){init\_IRQ();}
+    \rput[tl](-1.5,-3.4){. . .}
+\rput[tl](-2,-3.7){\}}
+%
+\rput[tl](3.8,-2.2){\rnode{a1}{}}
+\rput[tl](5.7,-0.2){\rnode{a2}{}}
+\ncangles[angleA=0,angleB=180,arm=.8cm,linearc=.1]{->}{a1}{a2}
+%
+\rput[tl](6,0){void \_\_init setup\_arch(char **cmdline\_p)}
+\rput[tl](6,-0.5){\{}
+    \rput[tl](6.5,-0.7){. . .}
+    \rput[tl](6.5,-1.1){init\_arch\_irq = mdesc-$>$init\_irq;}
+    \pcline[linecolor=red]{-}(9.2,-1.5)(12.3,-1.5)
+    \rput[tl](6.5,-1.7){. . .}
+\rput[tl](6,-1.8){\}}
+%
+\pcline{->}(1,-2.9)(5.7,-2.9)
+\rput[tl](6,-2.7){init\_arch\_irq();}
+%
+\rput[tl](7,-3.2){\rnode{b1}{}}
+\rput[tl](6,-4.7){\rnode{b2}{}}
+\ncangle[angleA=90,angleB=0,arm=.8cm,linearc=.1]{->}{b1}{b2}
+%
+\rput[tl](-2,-4.5){MACHINE\_START(MX51\_TRICYCLE, ...)}
+    \rput[tl](-1.5,-5.2){. . . . . .}
+    \rput[tl](-1.5,-5.5){.init\_irq = mx5\_init\_irq,}
+    \pcline[linecolor=red]{-}(-1.6,-5.9)(2.8,-5.9)
+    \rput[tl](-1.5,-6.2){. . . . . .}
+\rput[tl](-2,-6.6){MACHINE\_END}
+%
+\pcline{->}(3,-5.7)(5.7,-5.7)
+\rput[tl](6,-5.5){mxc\_tzic\_init\_irq()}
+\rput[tl](6,-6.6){mxc\_register\_gpio()}
+%
+\rput[tl](9.5,-5.7){\rnode{c1}{}}
+\rput[tl](10,-6.8){\rnode{c2}{}}
+\ncangles[angleA=0,angleB=-180,arm=1cm,linearc=.1]{->}{c1}{c2}
+%
+\rput[tl](7.5,-7.2){\rnode{d1}{}}
+\rput[tl](4,-7.8){\rnode{d2}{}}
+\ncangle[angleA=90,angleB=-180,linearc=.1]{->}{d1}{d2}
+%
+\rput[tl](4,-8){\blue 依次初始化mxc\_gpio\_ports结构体数组中的4组gpio}
+\rput[tl](4,-8.5){\blue port[0]$\sim$port[3]}
+\pcline[linecolor=blue]{-}(.6,-8)(3.8,-8)
+%
+\rput[tl](-2,-7.6){mxc\_gpio\_init(mxc\_gpio\_ports, 4)}
+\rput[tl](-2,-8.1){\{}
+\rput[tl](-1.5,-8.27){. . . }
+\rput[tl](-1.5,-8.6){for(i=0; i$<$4; i++)\{}
+\rput[tl](-1,-9.1){port[i].chip.direction\_input = mxc\_gpio\_direction\_input;}
+\rput[tl](-1,-9.6){port[i].chip.direction\_output = mxc\_gpio\_direction\_output;}
+\rput[tl](-1,-10.1){port[i].chip.get = mxc\_gpio\_get;}
+\rput[tl](-1,-10.6){port[i].chip.set = mxc\_gpio\_set;}
+%大括号
+\rput[tl](9.5,-9){\rnode{e1}{}}
+\rput[tl](9.5,-11){\rnode{e2}{}}
+\psbrace[braceWidthInner=0.1,braceWidthOuter=0.15,braceWidth=.1pt](e2)(e1){}
+\rput[tl](10,-9.1){在设置gpio pin时}
+\rput[tl](10,-9.8){实际上最终是调此}
+\rput[tl](10,-10.5){处挂接的函数指针}
+%
+\rput[tl](-1,-11.5){port[i].chip.base = i * 32;\qquad //设置每组gpio在数组中的起始位置}
+\rput[tl](-1,-12.1){port[i].chip.ngpio = 32;\qquad\quad//每组gpio的数量是32个}
+%
+\rput[tl](-1,-12.7){\red{gpiochip\_add(\&port[i].chip);}\quad\blue //关键函数解决上面疑问的地方}
+\rput[tl](4.5,-13.2){//四组gpio,每组都会调用这个函数来完成将gpio}
+\rput[tl](4.5,-13.7){//添加到gpio\_desc[]结构体数组中的工作}
+\rput[tl](-1.5,-13.2){\}}
+\rput[tl](-2,-13.7){\}}
+%
+\pcline{->}(0,-13.2)(0,-14.3)
+\rput[tl](-2,-14.5){int gpiochip\_add(struct gpio\_chip *chip)}
+\rput[tl](-2,-15){\{}
+\rput[tl](-1.5,-15.2){. . .}
+\rput[tl](-1.5,-15.5){unsigned	id;}
+\rput[tl](-1.5,-16.1){int		base = \textcolor[rgb]{1,0,0}{chip-$>$base};\quad //chip的初始化在上面mxc\_gpio\_init()中}
+
+\rput[tl](-1.5,-16.7){for (id = base; id $<$ base + \textcolor[rgb]{1,0,0}{chip-$>$ngpio}; id++)}
+\rput[tl](-1,-17.3){gpio\_desc[id].chip = chip; //依次将每个gpio都添加到gpio\_desc[]结构体数组中}
+\rput[tl](3.7,-17.9){\blue//详见下图：}
+
+\rput[tl](-1.5,-18.1){. . .}
+\rput[tl](-2,-18.3){\}}
+%
+
+%
+\end{psmatrix}
+%
+%
+\newpage
+\begin{psmatrix}[mnode=r,colsep=0.8,rowsep=0.4]
+\rput[tl](-1,1.5){\colorbox{lightgray}{\blue gpio与gpio\_desc[]之间的关系:}}
+\rput[tl](-1,.5){上面的代码实际上是将每32个gpio组成一个mxc\_gpio\_port\{\},而这个 mxc\_gpio\_port\{\}}
+\rput[tl](-1,0){中 含有一个虚拟的gpio\_chip{} 。而 为每个chip挂接的 gpio操作函数指针都是一样的，}
+\rput[tl](-1,-0.5){只是每个chip在gpio\_desc[ ]中的位置不同。}
+\rput[tl](-1,-1.3){从iMX51 spec p63可以知道共有4组gpio,及每组gpio的基地址。}
+%
+\rput[tl](-1,-1.8){\blue GPIO 1 start addr：0x73F84000,也就是mxc\_gpio\_set()中提到的port-$>$base}
+\rput[tl](-1,-2.5){chip-$>$base}
+    \rput[tl](1.35,-2.5){0}
+    \pcline{-}(1.8,-2.3)(1.8,-3)
+    \rput[tl](4,-2.6){. . .}
+    \rput[tl](7.37,-2.5){31}
+    \pcline{-}(7.2,-2.3)(7.2,-3)
+    \rput{0}{\psframe(1.1,-2.3)(8,-3)}
+%
+\rput[tl](-1,-3.5){\blue GPIO 2 start addr：0x73F88000}
+\rput[tl](-1,-4.2){chip-$>$base}
+    \rput[tl](1.25,-4.2){32}
+    \pcline{-}(1.8,-4)(1.8,-4.7)
+    \rput[tl](4,-4.3){. . .}
+    \rput[tl](7.37,-4.2){63}
+    \pcline{-}(7.2,-4)(7.2,-4.7)
+    \rput{0}{\psframe(1.1,-4)(8,-4.7)}
+%
+\rput[tl](-1,-5.2){\blue GPIO 3 start addr：0x73F8C000}
+\rput[tl](-1,-5.9){chip-$>$base}
+    \rput[tl](1.25,-5.9){64}
+    \pcline{-}(1.8,-5.7)(1.8,-6.4)
+    \rput[tl](4,-6){. . .}
+    \rput[tl](7.37,-5.9){95}
+    \pcline{-}(7.2,-5.7)(7.2,-6.4)
+    \rput{0}{\psframe(1.1,-5.7)(8,-6.4)}
+%
+\rput[tl](-1,-6.9){\blue GPIO 4 start addr：0x73F90000}
+\rput[tl](-1,-7.6){chip-$>$base}
+    \rput[tl](1.25,-7.6){96}
+    \pcline{-}(1.8,-7.4)(1.8,-8.1)
+    \rput[tl](4,-7.7){. . .}
+    \rput[tl](7.25,-7.6){127}
+    \pcline{-}(7.2,-7.4)(7.2,-8.1)
+    \rput{0}{\psframe(1.1,-7.4)(8,-8.1)}
+%
+\rput[tl](-1,-10){gpio\_desc[ ]}
+\rput{0}{\psframe(1.4,-10)(2.4,-18)}
+    \rput[tl](1.8,-10.1){0}
+    \rput[tl](1.85,-10.6){.}
+    \rput[tl](1.85,-10.8){.}
+    \rput[tl](1.85,-11){.}
+    \rput[tl](1.7,-11.3){31}
+%
+    \rput[tl](2.5,-10){\rnode{aa1}{}}
+    \rput[tl](2.5,-11.5){\rnode{aa2}{}}
+    \psbrace[braceWidthInner=0.1,braceWidthOuter=0.15,braceWidth=.1pt](aa2)(aa1){}
+    \rput[tl](8.2,-2.6){\rnode{ab1}{}}
+    \rput[tl](2.8,-10.75){\rnode{ab2}{}}
+    \ncangles[angleA=180,angleB=-180,arm=-.5cm,linearc=.1]{->}{ab1}{ab2}
+%
+    \rput[tl](1.7,-11.8){32}
+    \rput[tl](1.85,-12.3){.}
+    \rput[tl](1.85,-12.5){.}
+    \rput[tl](1.85,-12.7){.}
+    \rput[tl](1.7,-13){63}
+    \rput[tl](2.5,-11.8){\rnode{bb1}{}}
+    \rput[tl](2.5,-13.2){\rnode{bb2}{}}
+    \psbrace[braceWidthInner=0.1,braceWidthOuter=0.15,braceWidth=.1pt](bb2)(bb1){}
+    \rput[tl](8.2,-4.3){\rnode{bc1}{}}
+    \rput[tl](2.8,-12.5){\rnode{bc2}{}}
+    \ncangles[angleA=180,angleB=-180,arm=-1.5cm,linearc=.1]{->}{bc1}{bc2}
+%
+    \rput[tl](1.7,-13.5){64}
+    \rput[tl](1.85,-14){.}
+    \rput[tl](1.85,-14.2){.}
+    \rput[tl](1.85,-14.4){.}
+    \rput[tl](1.7,-14.7){95}
+    \rput[tl](2.5,-13.5){\rnode{cc1}{}}
+    \rput[tl](2.5,-14.9){\rnode{cc2}{}}
+    \psbrace[braceWidthInner=0.1,braceWidthOuter=0.15,braceWidth=.1pt](cc2)(cc1){}
+    \rput[tl](8.2,-6){\rnode{cd1}{}}
+    \rput[tl](2.8,-14.2){\rnode{cd2}{}}
+    \ncangles[angleA=180,angleB=-180,arm=-2.5cm,linearc=.1]{->}{cd1}{cd2}
+%
+    \rput[tl](1.7,-15.2){96}
+    \rput[tl](1.85,-15.7){.}
+    \rput[tl](1.85,-15.9){.}
+    \rput[tl](1.85,-16.1){.}
+    \rput[tl](1.6,-16.4){127}
+    \rput[tl](2.5,-15.2){\rnode{dd1}{}}
+    \rput[tl](2.5,-16.6){\rnode{dd2}{}}
+    \psbrace[braceWidthInner=0.1,braceWidthOuter=0.15,braceWidth=.1pt](dd2)(dd1){}
+    \rput[tl](8.2,-7.7){\rnode{cd1}{}}
+    \rput[tl](2.8,-15.9){\rnode{cd2}{}}
+    \ncangles[angleA=180,angleB=-180,arm=-3.5cm,linearc=.1]{->}{cd1}{cd2}
+%
+    \rput[tl](1.85,-17){.}
+    \rput[tl](1.85,-17.2){.}
+    \rput[tl](1.85,-17.4){.}
+%
+    \rput[tl](3,-9){\blue GPIO 1 $\sim$4都会调用}
+    \rput[tl](3,-9.6){\blue gpiochip\_add()将各自}
+    \rput[tl](3,-10.2){\blue 的gpio添加到该数组中}
+%
+    \rput[tl](0,-18.5){\blue 所以设置gpio时，传入整数值，作为gpio\_desc[]结构体数组的下标，}
+    \rput[tl](0,-19){\blue 就能获取到相应的gpio，详见后续分析。}
+\end{psmatrix}
+%
+%
+%
+%
+%
+\newpage
+\begin{psmatrix}[mnode=r,colsep=0.8,rowsep=0.4]
+\rput[tl](-2,0){struct mxc\_gpio\_port mxc\_gpio\_ports[ ] = \{}
+\rput[tl](-1.5,-0.5){\{}
+\rput[tl](-1,-1){.chip.label = "gpio-0",}
+\rput[tl](-1,-1.5){.base = IO\_ADDRESS(GPIO1\_BASE\_ADDR),\blue//0x73F84000 $<$==iMX51 spec p63}
+\rput[tl](-1.5,-2){\},\{}
+\rput[tl](-1,-2.5){.chip.label = "gpio-1",}
+\rput[tl](-1,-3){.base = IO\_ADDRESS(GPIO2\_BASE\_ADDR),}
+\rput[tl](-1.5,-3.5){\},\{}
+\rput[tl](-1,-4){.chip.label = "gpio-2",}
+\rput[tl](-1,-4.5){.base = IO\_ADDRESS(GPIO3\_BASE\_ADDR),}
+\rput[tl](-1.5,-5){\},\{}
+\rput[tl](-1,-5.5){.chip.label = "gpio-3",}
+\rput[tl](-1,-6){.base = IO\_ADDRESS(GPIO4\_BASE\_ADDR),}
+\rput[tl](-1.5,-6.5){\}}
+\rput[tl](-2,-7){\}}
+%
+\end{psmatrix}
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+
+\item
+\textcolor[rgb]{0,0,1}{相应函数的功能及实现分析:}
+\begin{enumerate}
+\item
+\textcolor[rgb]{1,0,0}{gpio\_request():} 用来检查某个gpio是否已经使用了，若已经在用了，返回busy。\newline
+\textcolor[rgb]{0,0,1}{e.g：\#define TRICYCLE\_3G\_PW (1*32 + 4)}\newline
+\begin{psmatrix}[mnode=r,colsep=0.8,rowsep=0.4]
+\rput[tl](1,0.2){\blue gpio\_request(TRICYCLE\_3G\_PW, "3g\_power");}
+\rput[tl](-1,-0.5){int gpio\_request(unsigned gpio, const char *label)
+}
+\rput[tl](-1,-1){\{}
+\rput[tl](-.5,-1.3){struct gpio\_desc	*desc;}
+\rput[tl](-.5,-1.8){struct gpio\_chip	*chip;}
+\rput[tl](-.5,-2.5){desc = \textcolor[rgb]{0,0,1}{\&gpio\_desc[gpio]};
+    //gpio\_desc[]是在上面mxc\_gpio\_init()中}
+\rput[tl](4.1,-3){//调用gpiochip\_add()来实现初始化的}
+\rput[tl](-.5,-3){chip = desc-$>$chip;}
+%
+\rput[tl](-.5,-4){\blue//将desc-$>$flags的第FLAG\_REQUESTED位设为1，并返回该位原来的值}
+\rput[tl](-.5,-4.5){\blue//注意：FLAG\_REQUESTED表示第几位，而不是要设置的值}
+\rput[tl](-.5,-5){if (test\_and\_set\_bit(FLAG\_REQUESTED, \&desc-$>$flags) == 0)\{}
+\rput[tl](0,-5.5){desc\_set\_label(desc, label ? : "?");
+                \textcolor[rgb]{1,0,0}{//实际上该函数内部宏没有开，}}
+                \rput[tl](6.3,-6){\textcolor[rgb]{1,0,0}{//其并没有实现设置label的功能}}
+\rput[tl](0,-6){status = 0;}
+\rput[tl](-.5,-6.5){\} else}
+\rput[tl](0,-7){status = -EBUSY;\blue//gpio已经在使用，返回busy。}
+\rput[tl](-0.5,-7.8){if (chip-$>$request)\blue//chip在初始化时并没有挂接该函数指针，不会进}
+\rput[tl](0,-8.3){status = chip-$>$request(chip, gpio - chip-$>$base);}
+\rput[tl](-1,-8.8){\}}
+\end{psmatrix}
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+
+\item
+\textcolor[rgb]{1, 0, 0}{gpio\_free()}: 当request了gpio，且使用完之后，要调用此函数释放。
+否则下次再request时就会因为该gpio正在使用而报busy错。\newline
+\textcolor[rgb]{0,0,1}{ e.g: gpio\_free(TRICYCLE\_3G\_PW);}\newline
+\begin{psmatrix}[mnode=r,colsep=0.8,rowsep=0.4]
+\rput[tl](-1,0){void gpio\_free(unsigned gpio)}
+\rput[tl](-1,-.5){\{}
+    \rput[tl](-.5,-0.8){struct gpio\_desc	*desc;}
+    \rput[tl](-.5,-1.3){struct gpio\_chip	*chip;}
+    \rput[tl](-.5,-2){desc = \textcolor[rgb]{0,0,1}{\&gpio\_desc[gpio]};
+                                //gpio\_desc[]是在上面mxc\_gpio\_init()中}
+    \rput[tl](4.1,-2.5){//调用gpiochip\_add()来实现初始化的}
+    \rput[tl](-.5,-2.5){chip = desc-$>$chip;}
+%
+    \rput[tl](-.5,-3.2){\blue//若desc-$>$flags的第FLAG\_REQUESTED位为1，则}
+%
+    \rput[tl](-.5,-3.7){if (chip \&\& test\_bit(FLAG\_REQUESTED, \&desc-$>$flags)) \{}
+%
+    \rput[tl](0,-4.2){desc\_set\_label(desc, NULL);}
+    \rput[tl](0,-4.7){\blue clear\_bit(FLAG\_REQUESTED, \&desc-$>$flags);}
+\rput[tl](-.5,-5.2){\}}
+\rput[tl](-1,-5.7){\}}
+\end{psmatrix}
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\item
+\textcolor[rgb]{1, 0, 0}{gpio\_direction\_input()/gpio\_direction\_output()}:
+                设置gpio是作为输入还是输出功能。两者在实现上大致相同，在此仅以设为输入为例。\newline
+\textcolor[rgb]{0,0,1}{ e.g: gpio\_direction\_input(TRICYCLE\_3G\_PW);}\newline
+\begin{psmatrix}[mnode=r,colsep=0.8,rowsep=0.4]
+\rput[tl](-1,0){int gpio\_direction\_input(unsigned gpio)}
+\rput[tl](-1,-.5){\{}
+\rput[tl](-.5,-.8){struct gpio\_desc	*desc = \&gpio\_desc[gpio];}
+\rput[tl](-.5,-1.3){struct gpio\_chip	*chip = desc-$>$chip;}
+%
+\rput[tl](-.5,-2){\blue//获取gpio在gpio\_desc[]结构体数组中的下标}
+\rput[tl](-.5,-2.5){gpio -= chip-$>$base;}
+%
+\rput[tl](-.5,-3){status = chip-$>$direction\_input(chip, gpio);}
+\rput[tl](-1,-3.5){\}}
+%
+\pcline{->}(2.5,-3.5)(2.5,-4.6)
+\rput[tl](7.5,-3){\blue //在mxc\_gpio\_init()中挂接函数指针}
+\rput[tl](3,-3.5){\red port[i].chip.direction\_input = mxc\_gpio\_direction\_input;}
+\rput[tl](3,-4){\blue mxc\_gpio\_direction\_input()又会调用下面这个函数}
+\rput[tl](-1,-4.8){static void \_set\_gpio\_direction(struct gpio\_chip *chip,
+        unsigned offset,int dir)}
+\rput[tl](-1,-5.3){\{}
+\rput[tl](-.5,-5.55){. . .}
+\rput[tl](-.5,-5.8){u32 l;\qquad\qquad\qquad\qquad
+                          \qquad\qquad\qquad\quad\red set GPIO Direction Register}
+\rput[tl](-.5,-6.3){l = \_\_raw\_readl(port-$>$base + GPIO\_GDIR);\blue$<$==iMx51 spec p1036}
+%
+\rput[tl](-.5,-6.8){if (dir)}
+\rput[tl](0,-7.3){l |= 1 $<$$<$ offset;}
+\rput[tl](-.5,-7.8){else}
+\rput[tl](0,-8.3){l \&= $\sim$(1 $<$$<$ offset);}
+\rput[tl](-.5,-8.8){\_\_raw\_writel(l, port-$>$base + GPIO\_GDIR);}
+\rput[tl](-1,-9.3){\}}
+%
+\rput[tl](4.5,-6.8){\blue 往寄存器相应位写0,表示设为input，写1为output}
+\rput[tl](4.5,-7.3){\blue 这个offset就是gpio\_direction\_input()中求出的下标}
+\rput[tl](4.5,-7.8){\blue 每组gpio有32个，每个gpio就对应该寄存器中的一位}
+%
+\end{psmatrix}
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\item
+\textcolor[rgb]{1, 0, 0}{gpio\_set\_value()/gpio\_get\_value()}: 设置/获取gpio的值，
+最终会调用mxc\_gpio\_init()中挂接的函数指针来实现设置gpio的值。(如：port[i].chip.set = mxc\_gpio\_set;)\newline
+\textcolor[rgb]{0,0,1}{ e.g: gpio\_set\_value(TRICYCLE\_3G\_PW, 1);}\newline
+\begin{psmatrix}[mnode=r,colsep=0.8,rowsep=0.4]
+\rput[tl](-1,0){\#define gpio\_set\_value \quad	\_\_gpio\_set\_value}
+\rput[tl](-1,-0.5){void \_\_gpio\_set\_value(unsigned gpio, int value)}
+\rput[tl](-1,-1){\{}
+    \rput[tl](-.5,-1.5){struct gpio\_chip	*chip;}
+    \rput[tl](-.5,-2){\blue//通过return gpio\_des[gpio].chip来得到相应的chip}
+    \rput[tl](-.5,-2.5){chip = gpio\_to\_chip(gpio);}
+    \rput[tl](-.5,-3){chip-$>$set(chip, gpio - chip-$>$base, value);}
+\rput[tl](-1,-3.5){\}}
+%
+\pcline{->}(1,-3.5)(1,-4.4)
+\rput[tl](-1,-4.5){void mxc\_gpio\_set(struct gpio\_chip *chip, unsigned offset, int value)}
+\rput[tl](-1,-5){\{}
+    \rput[tl](-.5,-5.5){struct mxc\_gpio\_port *port =
+		container\_of(chip, struct mxc\_gpio\_port, chip);}
+    \rput[tl](-.5,-6){void \_\_iomem *reg = port-$>$base + GPIO\_DR;\blue//iMX51 spec p1035}
+    \rput[tl](-.5,-6.8){u32 l = (\_\_raw\_readl(reg) \& ($\sim$(1 $<$$<$ offset))) | (value $<$$<$ offset);}
+    \rput[tl](-.5,-7.3){\_\_raw\_writel(l, reg);}
+\rput[tl](-1,-7.8){\}}
+\end{psmatrix}
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\newline
+\end{enumerate}
+\item
+\textcolor[rgb]{0, 0, 1}{注意事项：}
+\begin{enumerate}
+\item
+若需要设置的gpin pin具有复合功能时，必须要根据iMx51 spec，调用mxc\_request\_iomut()
+将该pin设置为gpio功能后，才能进行后续操作。
+\end{enumerate}
+\item
+\textcolor[rgb]{0, 0, 1}{致谢：}\newline
+感谢此次工作中，余工的指导工作。
+\end{itemize}
+
+\end{CJK*}
+\end{document}
